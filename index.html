@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grind Chain</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+    canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; touch-action: none; }
+    #startScreen {
+      position: fixed; inset: 0;
+      background: linear-gradient(180deg, rgba(20,5,35,0.88) 0%, rgba(10,2,18,0.65) 100%);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 10; cursor: pointer;
+    }
+    #startScreen.hidden { opacity: 0; pointer-events: none; transition: opacity 0.6s; }
+    #startScreen h1 {
+      font-size: clamp(2rem, 8vw, 4rem);
+      color: #E8FF00;
+      text-shadow: 0 0 20px #E8FF00, 0 0 40px #FF6B35;
+      margin-bottom: 1rem;
+      letter-spacing: 0.2em;
+    }
+    #startScreen .subtitle {
+      color: rgba(255,255,255,0.6);
+      font-size: clamp(0.8rem, 3vw, 1.2rem);
+      margin-bottom: 3rem;
+    }
+    #startScreen .tap-start {
+      color: #FF6B35;
+      font-size: clamp(1rem, 4vw, 1.5rem);
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.5; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.05); }
+    }
+    #comboDisplay {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: clamp(4rem, 15vw, 8rem);
+      font-weight: bold;
+      color: #E8FF00;
+      text-shadow: 0 0 30px #E8FF00, 0 0 60px #FF6B35;
+      z-index: 5;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s, transform 0.2s;
+    }
+    #comboDisplay.visible { opacity: 1; }
+    #comboDisplay.pop { transform: translate(-50%, -50%) scale(1.3); }
+    #scoreDisplay {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      color: #fff;
+      font-size: clamp(1rem, 4vw, 1.5rem);
+      z-index: 5;
+      text-shadow: 0 0 10px rgba(0,0,0,0.8);
+    }
+    #levelDisplay {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: #FF6B35;
+      font-size: clamp(0.8rem, 3vw, 1.2rem);
+      z-index: 5;
+    }
+    #highScoreDisplay {
+      position: fixed;
+      top: 50px;
+      right: 20px;
+      color: rgba(255,255,255,0.5);
+      font-size: clamp(0.7rem, 2.5vw, 1rem);
+      z-index: 5;
+    }
+    #gameOverScreen {
+      position: fixed; inset: 0;
+      background: rgba(10,2,18,0.9);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+    }
+    #gameOverScreen.visible { display: flex; }
+    #gameOverScreen h2 {
+      font-size: clamp(2rem, 8vw, 3.5rem);
+      color: #FF6B35;
+      margin-bottom: 1rem;
+    }
+    #gameOverScreen .final-score {
+      font-size: clamp(3rem, 12vw, 6rem);
+      color: #E8FF00;
+      text-shadow: 0 0 30px #E8FF00;
+      margin-bottom: 2rem;
+    }
+    #gameOverScreen .restart {
+      color: #fff;
+      font-size: clamp(1rem, 4vw, 1.3rem);
+      cursor: pointer;
+      padding: 1rem 2rem;
+      border: 2px solid #FF6B35;
+      border-radius: 8px;
+      transition: all 0.3s;
+    }
+    #gameOverScreen .restart:hover {
+      background: #FF6B35;
+      color: #000;
+    }
+    #creditsScreen {
+      position: fixed; inset: 0;
+      background: linear-gradient(180deg, rgba(20,5,35,0.95) 0%, rgba(10,2,18,0.98) 100%);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 30;
+      text-align: center;
+      padding: 2rem;
+    }
+    #creditsScreen.visible { display: flex; }
+    #creditsScreen h2 {
+      color: #E8FF00;
+      font-size: clamp(1.5rem, 6vw, 2.5rem);
+      margin-bottom: 2rem;
+    }
+    #creditsScreen p {
+      color: rgba(255,255,255,0.7);
+      font-size: clamp(0.8rem, 3vw, 1.1rem);
+      margin-bottom: 1rem;
+      max-width: 500px;
+      line-height: 1.6;
+    }
+    #creditsScreen .back {
+      margin-top: 2rem;
+      color: #FF6B35;
+      cursor: pointer;
+      font-size: clamp(1rem, 4vw, 1.2rem);
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/dist/Tone.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.183.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.183.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  
+  <div id="startScreen">
+    <h1>GRIND CHAIN</h1>
+    <div class="subtitle">Tap to jump. Tap at peak to grind.</div>
+    <div class="tap-start">TAP TO START</div>
+  </div>
+
+  <div id="comboDisplay">0</div>
+  <div id="scoreDisplay">0</div>
+  <div id="highScoreDisplay">BEST: 0</div>
+  <div id="levelDisplay">Level 1</div>
+
+  <div id="gameOverScreen">
+    <h2>CHAIN BROKEN</h2>
+    <div class="final-score">0</div>
+    <div class="restart">TAP TO RETRY</div>
+  </div>
+
+  <div id="creditsScreen">
+    <h2>GRIND CHAIN</h2>
+    <p>A game of timing and precision.</p>
+    <p>Tap once to jump. Tap again at the peak of your jump to lock a grind on any rail in range.</p>
+    <p>Chain grinds together for massive score multipliers. Don't touch the ground!</p>
+    <div class="back">TAP TO BACK</div>
+  </div>
+
+  <a href="https://github.com/nishivector/grind-chain" target="_blank" style="position:fixed;bottom:16px;right:16px;color:rgba(255,255,255,0.4);font-size:12px;text-decoration:none;font-family:monospace;z-index:1000;">GitHub ↗</a>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    const SCORE_KEY = 'grind-chain-highscore';
+    function getHighScore() { return parseInt(localStorage.getItem(SCORE_KEY) || '0'); }
+    function saveHighScore(s) { if (s > getHighScore()) localStorage.setItem(SCORE_KEY, s); }
+
+    // Game state
+    let gameState = 'start';
+    let score = 0;
+    let combo = 0;
+    let level = 1;
+    let scrollSpeed = 0.08;
+    let playerY = 0;
+    let playerVelocityY = 0;
+    let isJumping = false;
+    let isGrinding = false;
+    let currentRail = null;
+    let grindProgress = 0;
+    let hasTappedInAir = false;
+    let audioInitialized = false;
+    let musicStarted = false;
+
+    // Three.js setup
+    const canvas = document.getElementById('gameCanvas');
+    const rect = canvas.getBoundingClientRect();
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, rect.width / rect.height, 0.1, 1000);
+    camera.position.z = 10;
+    camera.position.y = 2;
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setSize(rect.width, rect.height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0x000000);
+
+    // Post-processing
+    const composer = new EffectComposer(renderer);
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(rect.width, rect.height), 0.4, 0.4, 0.85);
+    composer.addPass(bloomPass);
+
+    // Sky gradient background
+    const skyGeometry = new THREE.PlaneGeometry(100, 50);
+    const skyMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        topColor: { value: new THREE.Color(0xFF6B35) },
+        bottomColor: { value: new THREE.Color(0x2D1B4E) }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 topColor;
+        uniform vec3 bottomColor;
+        varying vec2 vUv;
+        void main() {
+          gl_FragColor = vec4(mix(bottomColor, topColor, vUv.y), 1.0);
+        }
+      `,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const sky = new THREE.Mesh(skyGeometry, skyMaterial);
+    sky.position.z = -20;
+    scene.add(sky);
+
+    // Ground
+    const groundGeometry = new THREE.PlaneGeometry(100, 20);
+    const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x2D1B4E });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.position.y = -3;
+    ground.position.z = -5;
+    scene.add(ground);
+
+    // Ground line
+    const groundLineGeometry = new THREE.PlaneGeometry(100, 0.1);
+    const groundLineMaterial = new THREE.MeshBasicMaterial({ color: 0xE8FF00 });
+    const groundLine = new THREE.Mesh(groundLineGeometry, groundLineMaterial);
+    groundLine.position.y = 0;
+    groundLine.position.z = -5;
+    scene.add(groundLine);
+
+    // Parallax buildings
+    const buildings = [];
+    const buildingLayers = [
+      { z: -15, color: 0x1a0f2e, scale: 1.5, speed: 0.3 },
+      { z: -10, color: 0x2d1b4e, scale: 1.2, speed: 0.5 },
+      { z: -6, color: 0x3d2666, scale: 1, speed: 0.7 }
+    ];
+
+    buildingLayers.forEach((layer, layerIndex) => {
+      for (let i = 0; i < 15; i++) {
+        const width = 1 + Math.random() * 3;
+        const height = 2 + Math.random() * 6;
+        const geometry = new THREE.PlaneGeometry(width, height);
+        const material = new THREE.MeshBasicMaterial({ color: layer.color });
+        const building = new THREE.Mesh(geometry, material);
+        building.position.x = -20 + i * 8 + Math.random() * 4;
+        building.position.y = height / 2 - 2;
+        building.position.z = layer.z;
+        building.userData = { speed: layer.speed, layerIndex };
+        scene.add(building);
+        buildings.push(building);
+      }
+    });
+
+    // Player (silhouette skater)
+    const playerGroup = new THREE.Group();
+    
+    // Body
+    const bodyGeometry = new THREE.CapsuleGeometry(0.15, 0.4, 4, 8);
+    const bodyMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.position.y = 0.5;
+    playerGroup.add(body);
+
+    // Head
+    const headGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+    const head = new THREE.Mesh(headGeometry, bodyMaterial);
+    head.position.y = 1;
+    playerGroup.add(head);
+
+    // Board
+    const boardGeometry = new THREE.BoxGeometry(0.6, 0.05, 0.2);
+    const board = new THREE.Mesh(boardGeometry, bodyMaterial);
+    board.position.y = 0.1;
+    playerGroup.add(board);
+
+    playerGroup.position.x = -3;
+    playerGroup.position.y = 0;
+    scene.add(playerGroup);
+
+    // Rails
+    const rails = [];
+    const railPool = [];
+
+    function createRail(x, y, width, isMoving = false, moveSpeed = 0, moveRange = 0) {
+      const geometry = new THREE.BoxGeometry(width, 0.08, 0.08);
+      const material = new THREE.MeshBasicMaterial({ color: 0xE8FF00 });
+      const rail = new THREE.Mesh(geometry, material);
+      rail.position.set(x, y, -3);
+      rail.userData = { 
+        width, 
+        isMoving, 
+        moveSpeed, 
+        moveRange, 
+        baseY: y,
+        moveOffset: Math.random() * Math.PI * 2 
+      };
+      scene.add(rail);
+      rails.push(rail);
+      return rail;
+    }
+
+    // Level configurations
+    const levels = [
+      { name: "First Grind", railCount: 5, minGap: 4, maxGap: 6, heightVar: 0, moving: false },
+      { name: "Elevate", railCount: 6, minGap: 3.5, maxGap: 5.5, heightVar: 1.5, moving: false },
+      { name: "Gap Year", railCount: 7, minGap: 5, maxGap: 8, heightVar: 1, moving: false },
+      { name: "Moving Target", railCount: 8, minGap: 4, maxGap: 6, heightVar: 2, moving: true },
+      { name: "Narrow Edge", railCount: 10, minGap: 3.5, maxGap: 5, heightVar: 2.5, moving: true }
+    ];
+
+    function initLevel(lvl) {
+      rails.forEach(r => scene.remove(r));
+      rails.length = 0;
+      
+      const config = levels[lvl - 1];
+      let x = 5;
+      
+      for (let i = 0; i < config.railCount; i++) {
+        const width = 1.5 - (lvl - 1) * 0.1;
+        const y = 0.8 + Math.random() * config.heightVar;
+        const isMoving = config.moving && i > 2;
+        const moveSpeed = isMoving ? 0.02 + Math.random() * 0.02 : 0;
+        const moveRange = isMoving ? 0.5 + Math.random() * 0.5 : 0;
+        
+        createRail(x, y, width, isMoving, moveSpeed, moveRange);
+        x += config.minGap + Math.random() * (config.maxGap - config.minGap);
+      }
+    }
+
+    // Particle system for grind
+    const particles = [];
+    const particleGeometry = new THREE.SphereGeometry(0.03, 4, 4);
+    const particleMaterial = new THREE.MeshBasicMaterial({ color: 0xE8FF00 });
+
+    function spawnParticles(x, y, count = 10) {
+      for (let i = 0; i < count; i++) {
+        const particle = new THREE.Mesh(particleGeometry, particleMaterial.clone());
+        particle.position.set(x, y, -2.5);
+        particle.userData = {
+          vx: (Math.random() - 0.5) * 0.1,
+          vy: Math.random() * 0.1,
+          vz: (Math.random() - 0.5) * 0.05,
+          life: 1
+        };
+        scene.add(particle);
+        particles.push(particle);
+      }
+    }
+
+    function updateParticles() {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.position.x += p.userData.vx;
+        p.position.y += p.userData.vy;
+        p.position.z += p.userData.vz;
+        p.userData.life -= 0.02;
+        p.material.opacity = p.userData.life;
+        
+        if (p.userData.life <= 0) {
+          scene.remove(p);
+          particles.splice(i, 1);
+        }
+      }
+    }
+
+    // Trail effect
+    const trailPoints = [];
+    const maxTrailPoints = 50;
+
+    function addTrailPoint(x, y) {
+      trailPoints.push({ x, y, age: 0 });
+      if (trailPoints.length > maxTrailPoints) {
+        trailPoints.shift();
+      }
+    }
+
+    let trailLine = null;
+    function updateTrail() {
+      if (trailLine) scene.remove(trailLine);
+      
+      if (trailPoints.length > 1) {
+        const points = trailPoints.map(p => new THREE.Vector3(p.x, p.y, -2.8));
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const material = new THREE.LineBasicMaterial({ 
+          color: 0xE8FF00, 
+          transparent: true, 
+          opacity: 0.7 
+        });
+        trailLine = new THREE.Line(geometry, material);
+        scene.add(trailLine);
+      }
+      
+      trailPoints.forEach(p => p.age += 0.02);
+      while (trailPoints.length > 0 && trailPoints[0].age > 1) {
+        trailPoints.shift();
+      }
+    }
+
+    // Audio
+    let jumpSynth, grindSynth, comboSynth, breakSynth, bgmLoop;
+
+    async function initAudio() {
+      if (audioInitialized) return;
+      
+      await Tone.start();
+      
+      jumpSynth = new Tone.Synth({
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 }
+      }).toDestination();
+      jumpSynth.volume.value = -10;
+
+      grindSynth = new Tone.Synth({
+        oscillator: { type: 'square' },
+        envelope: { attack: 0.005, decay: 0.1, sustain: 0.1, release: 0.05 }
+      }).toDestination();
+      grindSynth.volume.value = -8;
+
+      comboSynth = new Tone.Synth({
+        oscillator: { type: 'triangle' },
+        envelope: { attack: 0.01, decay: 0.05, sustain: 0, release: 0.05 }
+      }).toDestination();
+      comboSynth.volume.value = -12;
+
+      breakSynth = new Tone.MembraneSynth({
+        pitchDecay: 0.05,
+        octaves: 3,
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.001, decay: 0.2, sustain: 0, release: 0.2 }
+      }).toDestination();
+      breakSynth.volume.value = -5;
+
+      // Background music
+      const reverb = new Tone.Reverb({ decay: 2, wet: 0.3 }).toDestination();
+      
+      const bass = new Tone.Synth({
+        oscillator: { type: 'sawtooth' },
+        envelope: { attack: 0.01, decay: 0.2, sustain: 0.3, release: 0.2 }
+      }).connect(reverb);
+      bass.volume.value = -15;
+
+      const melody = new Tone.Synth({
+        oscillator: { type: 'square' },
+        envelope: { attack: 0.01, decay: 0.1, sustain: 0.2, release: 0.1 }
+      }).connect(reverb);
+      melody.volume.value = -18;
+
+      const drum = new Tone.MembraneSynth({
+        pitchDecay: 0.05,
+        octaves: 4
+      }).toDestination();
+      drum.volume.value = -12;
+
+      let beat = 0;
+      Tone.Transport.bpm.value = 120;
+      
+      Tone.Transport.scheduleRepeat((time) => {
+        if (gameState !== 'playing') return;
+        
+        // Bass on 1 and 3
+        if (beat % 4 === 0 || beat % 4 === 2) {
+          bass.triggerAttackRelease('C2', '8n', time);
+        }
+        
+        // Melody pattern
+        const melodyNotes = ['E4', 'G4', 'A4', 'G4', 'E4', 'D4', 'E4', 'C4'];
+        melody.triggerAttackRelease(melodyNotes[beat % 8], '16n', time);
+        
+        // Drum
+        if (beat % 2 === 0) {
+          drum.triggerAttackRelease('C1', '8n', time);
+        }
+        
+        beat++;
+      }, '8n');
+
+      audioInitialized = true;
+    }
+
+    function playJumpSound() {
+      if (!audioInitialized) return;
+      jumpSynth.triggerAttackRelease('C5', '16n');
+    }
+
+    function playGrindLock() {
+      if (!audioInitialized) return;
+      grindSynth.triggerAttackRelease('G4', '16n');
+      grindSynth.triggerAttackRelease('C5', '32n', '+0.05');
+    }
+
+    function playComboSound() {
+      if (!audioInitialized) return;
+      const notes = ['C5', 'E5', 'G5', 'C6'];
+      comboSynth.triggerAttackRelease(notes[Math.min(combo, 4) - 1] || 'C6', '16n');
+    }
+
+    function playBreakSound() {
+      if (!audioInitialized) return;
+      breakSynth.triggerAttackRelease('C1', '8n');
+    }
+
+    // UI elements
+    const startScreen = document.getElementById('startScreen');
+    const comboDisplay = document.getElementById('comboDisplay');
+    const scoreDisplay = document.getElementById('scoreDisplay');
+    const highScoreDisplay = document.getElementById('highScoreDisplay');
+    const levelDisplay = document.getElementById('levelDisplay');
+    const gameOverScreen = document.getElementById('gameOverScreen');
+    const creditsScreen = document.getElementById('creditsScreen');
+
+    highScoreDisplay.textContent = `BEST: ${getHighScore()}`;
+
+    // Input handling
+    let pointerDown = false;
+
+    function onPointerDown(e) {
+      e.preventDefault();
+      if (gameState === 'start') {
+        initAudio();
+        gameState = 'playing';
+        startScreen.classList.add('hidden');
+        score = 0;
+        combo = 0;
+        level = 1;
+        scrollSpeed = 0.08;
+        playerY = 0;
+        playerVelocityY = 0;
+        isJumping = false;
+        isGrinding = false;
+        hasTappedInAir = false;
+        initLevel(level);
+        
+        if (!musicStarted) {
+          Tone.Transport.start();
+          musicStarted = true;
+        }
+        
+        return;
+      }
+
+      if (gameState === 'playing') {
+        if (!isJumping && !isGrinding) {
+          // First tap - jump
+          isJumping = true;
+          playerVelocityY = 0.18;
+          hasTappedInAir = false;
+          playJumpSound();
+        } else if (isJumping && !hasTappedInAir && playerVelocityY < 0) {
+          // Second tap at peak - try to grind
+          hasTappedInAir = true;
+          tryGrind();
+        }
+      }
+
+      if (gameState === 'gameover') {
+        if (e.target.classList.contains('restart')) {
+          gameState = 'playing';
+          gameOverScreen.classList.remove('visible');
+          score = 0;
+          combo = 0;
+          level = 1;
+          scrollSpeed = 0.08;
+          playerY = 0;
+          playerVelocityY = 0;
+          isJumping = false;
+          isGrinding = false;
+          hasTappedInAir = false;
+          initLevel(level);
+        }
+      }
+
+      if (gameState === 'credits') {
+        if (e.target.classList.contains('back')) {
+          gameState = 'start';
+          creditsScreen.classList.remove('visible');
+          startScreen.classList.remove('hidden');
+        }
+      }
+    }
+
+    canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('pointerup', () => {});
+    canvas.addEventListener('pointercancel', () => {});
+
+    // Click handlers for UI
+    document.querySelectorAll('.restart').forEach(el => {
+      el.addEventListener('click', onPointerDown);
+    });
+    document.querySelectorAll('.back').forEach(el => {
+      el.addEventListener('click', onPointerDown);
+    });
+
+    // Also allow clicking start screen
+    startScreen.addEventListener('pointerdown', onPointerDown);
+
+    function tryGrind() {
+      // Find rail in range
+      const playerX = playerGroup.position.x;
+      
+      for (const rail of rails) {
+        const railX = rail.position.x;
+        const halfWidth = rail.userData.width / 2;
+        
+        if (playerX >= railX - halfWidth - 0.3 && playerX <= railX + halfWidth + 0.3) {
+          // Rail in range - lock grind!
+          isGrinding = true;
+          isJumping = false;
+          currentRail = rail;
+          grindProgress = 0;
+          combo++;
+          
+          // Calculate score
+          const multiplier = Math.min(combo, 10);
+          score += 100 * multiplier;
+          
+          // Visual feedback
+          spawnParticles(playerGroup.position.x, rail.position.y + 0.2, 15);
+          playGrindLock();
+          playComboSound();
+          
+          // Update UI
+          updateComboDisplay();
+          return;
+        }
+      }
+    }
+
+    function updateComboDisplay() {
+      comboDisplay.textContent = combo;
+      comboDisplay.classList.add('visible');
+      comboDisplay.classList.add('pop');
+      setTimeout(() => comboDisplay.classList.remove('pop'), 100);
+      
+      // Color shift at high combos
+      if (combo >= 8) {
+        comboDisplay.style.color = '#fff';
+        comboDisplay.style.textShadow = '0 0 40px #fff, 0 0 80px #E8FF00';
+      } else {
+        comboDisplay.style.color = '#E8FF00';
+        comboDisplay.style.textShadow = '0 0 30px #E8FF00, 0 0 60px #FF6B35';
+      }
+    }
+
+    function breakCombo() {
+      if (combo > 0) {
+        playBreakSound();
+      }
+      combo = 0;
+      comboDisplay.classList.remove('visible');
+      
+      // Visual reset
+      comboDisplay.style.color = '#E8FF00';
+      comboDisplay.style.textShadow = '0 0 30px #E8FF00, 0 0 60px #FF6B35';
+    }
+
+    function gameOver() {
+      gameState = 'gameover';
+      saveHighScore(score);
+      highScoreDisplay.textContent = `BEST: ${getHighScore()}`;
+      
+      document.querySelector('#gameOverScreen .final-score').textContent = score;
+      gameOverScreen.classList.add('visible');
+    }
+
+    // Game loop
+    let lastTime = 0;
+    let levelProgress = 0;
+
+    function animate(time) {
+      requestAnimationFrame(animate);
+      
+      const delta = Math.min((time - lastTime) / 1000, 0.1);
+      lastTime = time;
+
+      // Update sky position for parallax
+      if (gameState === 'playing') {
+        buildings.forEach(b => {
+          b.position.x -= scrollSpeed * b.userData.speed;
+          if (b.position.x < -25) {
+            b.position.x += 60;
+          }
+        });
+      }
+
+      // Update rails
+      rails.forEach(rail => {
+        rail.position.x -= scrollSpeed;
+        
+        // Moving rails
+        if (rail.userData.isMoving) {
+          rail.position.y = rail.userData.baseY + 
+            Math.sin(time * 0.001 * rail.userData.moveSpeed + rail.userData.moveOffset) * 
+            rail.userData.moveRange;
+        }
+      });
+
+      // Remove off-screen rails and spawn new ones
+      while (rails.length > 0 && rails[0].position.x < -15) {
+        scene.remove(rails[0]);
+        rails.shift();
+      }
+
+      // Level progression
+      if (gameState === 'playing') {
+        levelProgress += scrollSpeed * 0.5;
+        
+        // Level up every 30 units
+        if (levelProgress > 30 && level < 5) {
+          level++;
+          levelProgress = 0;
+          scrollSpeed += 0.01;
+          levelDisplay.textContent = `Level ${level}`;
+        }
+
+        // Spawn new rails
+        const lastRail = rails[rails.length - 1];
+        if (lastRail && lastRail.position.x < 20) {
+          const config = levels[level - 1];
+          const gap = config.minGap + Math.random() * (config.maxGap - config.minGap);
+          const width = Math.max(0.5, 1.5 - (level - 1) * 0.15);
+          const y = 0.8 + Math.random() * config.heightVar;
+          const isMoving = config.moving && rails.length > 5;
+          const moveSpeed = isMoving ? 0.02 + Math.random() * 0.02 : 0;
+          const moveRange = isMoving ? 0.5 + Math.random() * 0.5 : 0;
+          
+          createRail(lastRail.position.x + gap, y, width, isMoving, moveSpeed, moveRange);
+        }
+
+        // Player physics
+        if (isJumping) {
+          playerVelocityY -= 0.008; // Gravity
+          playerY += playerVelocityY;
+          
+          // Ground collision
+          if (playerY <= 0) {
+            playerY = 0;
+            isJumping = false;
+            playerVelocityY = 0;
+            
+            if (!isGrinding) {
+              breakCombo();
+            }
+          }
+        }
+
+        if (isGrinding && currentRail) {
+          grindProgress += scrollSpeed;
+          playerY = currentRail.position.y + 0.15;
+          
+          // Grind complete or rail ended
+          if (grindProgress > currentRail.userData.width || 
+              currentRail.position.x < -10) {
+            isGrinding = false;
+            currentRail = null;
+            playerVelocityY = 0.1; // Small hop after grind
+          }
+          
+          // Add trail
+          addTrailPoint(playerGroup.position.x, playerY + 0.5);
+        }
+
+        // Check for ground collision without grinding
+        if (playerY <= 0 && !isGrinding && isJumping === false) {
+          if (combo > 0) {
+            gameOver();
+          }
+        }
+
+        playerGroup.position.y = playerY;
+        
+        // Player animation
+        const bobAmount = isGrinding ? 0.05 : Math.sin(time * 0.01) * 0.02;
+        playerGroup.children[0].position.y = 0.5 + bobAmount;
+        playerGroup.children[1].position.y = 1 + bobAmount;
+        
+        // Update score
+        scoreDisplay.textContent = score;
+      }
+
+      updateParticles();
+      updateTrail();
+      
+      // Resize handler
+      const newRect = canvas.getBoundingClientRect();
+      if (newRect.width !== rect.width || newRect.height !== rect.height) {
+        camera.aspect = newRect.width / newRect.height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(newRect.width, newRect.height);
+        composer.setSize(newRect.width, newRect.height);
+      }
+
+      composer.render();
+    }
+
+    animate(0);
+  </script>
+</body>
+</html>
